@@ -1,3 +1,7 @@
+import os, sys
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(CURRENT_DIR))
+
 from fastapi import FastAPI
 from model.op_json_loader import *
 from web.websocket import websocket_endpoint
