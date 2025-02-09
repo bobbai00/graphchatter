@@ -7,10 +7,12 @@ from model.texera.TexeraPort import TexeraPort
 
 class TexeraOperator(Operator):
     def __init__(self, operator_dict: dict, port_indexed_input_schemas: List['DataSchema'] = [], error: str = ""):
+        # TODO: change the property fetching
         self.operator_id = operator_dict.get('operatorID', '')
         self.operator_type = operator_dict.get('operatorType', '')
         self.operator_version = operator_dict.get('operatorVersion', '')
-        self.operator_properties = operator_dict.get('operatorProperties', {})
+        self.operator_properties = {
+            "question": operator_dict.get('question')}
 
         # a mapping from port id to port
         self.input_ports: Dict[str, 'TexeraPort'] = {

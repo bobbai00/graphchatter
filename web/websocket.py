@@ -6,6 +6,8 @@ from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import Dict, Optional, List, Union
 
+from model.texera.TexeraWorkflow import TexeraWorkflow
+
 logging.basicConfig(level=logging.INFO)
 
 # In-memory session state storage
@@ -168,8 +170,9 @@ async def handle_websocket_request(session_id: str, request_type: str, request_d
 
     elif request_type == "WorkflowExecuteRequest":
         request = WorkflowExecuteRequest(**request_data)
-        print(request)
-        # TODO: call the pykka engine
+        workflow = TexeraWorkflow(request.logicalPlan)
+
+        # TODO: 1. serialize the workflow as string(or other type) to be able to send it to the controller
         return {
             "type": "WorkflowExecutionStarted",
             "executionName": request.executionName,

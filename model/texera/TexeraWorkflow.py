@@ -8,13 +8,12 @@ from model.Port import Port
 
 from model.Workflow import Workflow
 from model.texera.TexeraOperator import TexeraOperator
-import matplotlib.pyplot as plt
 
 
 class TexeraWorkflow(Workflow):
     def __init__(
             self,
-            workflow_content: str,
+            workflow_content: dict,
             operator_id_to_port_indexed_input_schemas_mapping: Dict[str, List['DataSchema']]=None,
             operator_id_to_error_mapping: Dict[str, str]=None,
             wid: int = 0,
@@ -27,7 +26,7 @@ class TexeraWorkflow(Workflow):
             operator_id_to_error_mapping = {}
 
         self.workflow_content = workflow_content
-        self.workflow_dict = json.loads(workflow_content)
+        self.workflow_dict = workflow_content
         operators_dict = self.workflow_dict.get("operators", {})
         links_dict = self.workflow_dict.get("links", {})
 
@@ -55,16 +54,12 @@ class TexeraWorkflow(Workflow):
 
         # then start to add link
         for link in links_dict:
-            source_op_id = link.get('source').get('operatorID')
-            src_port_id = link.get('source').get('portID')
-            target_op_id = link.get('target').get('operatorID')
-            target_port_id = link.get('target').get('portID')
+            source_op_id = link.get('fromOpId')
+            src_port_id = link.get('fromPortId').get('id')
+            target_op_id = link.get('toOpId')
+            target_port_id = link.get('toPortId').get('id')
 
-            op = self.operators.get(target_op_id)
-            if op is not None:
-                schema = op.GetInputSchemaByPortID(target_port_id)
-            else:
-                schema = None
+            schema = None
             self.DAG.add_edge(source_op_id,
                               target_op_id,
                               srcPort=src_port_id,
@@ -101,13 +96,6 @@ class TexeraWorkflow(Workflow):
                 node_color="lightblue",
                 font_size=5,
                 arrows=True)
-
-        # # Draw the edge labels
-        # edge_labels = nx.get_edge_attributes(self.DAG, 'schema')
-        # nx.draw_networkx_edge_labels(self.DAG, pos, edge_labels=edge_labels)
-
-        # Show the plot
-        plt.show()
 
     def GetDAG(self):
         return self.DAG
