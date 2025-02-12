@@ -5,6 +5,7 @@ sys.path.append(os.path.dirname(CURRENT_DIR))
 import pykka
 import zmq
 import threading
+import pickle
 
 from engine.config import WORKERS_CONFIG
 
