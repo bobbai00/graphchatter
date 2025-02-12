@@ -6,7 +6,7 @@ def send_message_to_controller(host, port, message):
     socket = context.socket(zmq.REQ)
     socket.connect(f"tcp://{host}:{port}")
 
-    socket.send_string(message)
+    socket.send(message)
     response = socket.recv_string()
 
     socket.close()

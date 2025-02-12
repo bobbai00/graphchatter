@@ -1,7 +1,9 @@
 import pykka
 import zmq
 import threading
+import pickle
 
+from web.websocket import WorkflowExecuteRequest
 from engine.config import CONTROLLER_CONFIG, WORKERS_CONFIG
 
 
@@ -22,14 +24,18 @@ class Controller(pykka.ThreadingActor):
 
     def listen_for_requests(self):
         while True:
-            message = self.server_socket.recv_string()
-            print(f"Controller received: {message}")
+            message = self.server_socket.recv()
+            workflow = pickle.loads(message)
 
-            # TODO: 1. deserialize the message as type TexeraWorkflow
-            # TODO: 2. use the operators and DAG structure to assign operators(nodes) to the actors
-            # TODO: 3. send the start execute signal
+            print(f"Controller received workflow with WID {workflow.wid}")
 
-            # Send back a summary response to the client
+            operators = workflow.GetOperators()
+            dag = workflow.GetDAG()
+
+            for operator in operators:
+                self.broadcast_to_workers(operator)
+
+            self.broadcast_to_workers(WorkflowExecuteRequest())
             self.server_socket.send_string(f"Execution starts")
 
     def broadcast_to_workers(self, message):
@@ -38,7 +44,7 @@ class Controller(pykka.ThreadingActor):
             try:
                 socket = self.context.socket(zmq.REQ)
                 socket.connect(f"tcp://{worker['host']}:{worker['port']}")
-                socket.send_string(message)
+                socket.send(message)
 
                 response = socket.recv_string()
                 print(f"Controller received from Worker {worker['port']}: {response}")
@@ -48,7 +54,6 @@ class Controller(pykka.ThreadingActor):
             except Exception as e:
                 print(f"Error communicating with Worker {worker['port']}: {e}")
                 responses.append(f"Failed to reach Worker {worker['port']}")
-
         return responses
 
     def on_stop(self):
