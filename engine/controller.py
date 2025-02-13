@@ -2,8 +2,8 @@ import pykka
 import zmq
 import threading
 import pickle
+from messages import *
 
-from web.websocket import WorkflowExecuteRequest
 from engine.config import CONTROLLER_CONFIG, WORKERS_CONFIG
 
 
@@ -30,12 +30,13 @@ class Controller(pykka.ThreadingActor):
             print(f"Controller received workflow with WID {workflow.wid}")
 
             operators = workflow.GetOperators()
-            dag = workflow.GetDAG()
 
-            for operator in operators:
-                self.broadcast_to_workers(operator)
+            for assignment in self.assign_tasks_to_workers(operators, workflow):
+                message = pickle.dumps(assignment)
+                self.broadcast_to_workers(message)
 
-            self.broadcast_to_workers(WorkflowExecuteRequest())
+            start = WorkerExecutionStart()
+            message = pickle.dumps(start)
             self.server_socket.send_string(f"Execution starts")
 
     def broadcast_to_workers(self, message):
@@ -59,6 +60,15 @@ class Controller(pykka.ThreadingActor):
     def on_stop(self):
         self.server_socket.close()
         self.context.term()
+
+    def assign_tasks_to_workers(self, operators, workflow):
+        #Round Robin
+        i = 0
+        for operator in operators:
+            yield WorkerAssignment(self.workers_config[i%3], operator, workflow)
+            i += 1
+
+
 
 # ---------------------- Main Execution Block ---------------------- #
 
