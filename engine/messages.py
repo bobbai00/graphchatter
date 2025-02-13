@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 
-from model.texera import TexeraWorkflow, TexeraOperator
 
 class WorkerExecutionStart(BaseModel):
     type: str = "WorkerExecutionStart"
@@ -17,3 +16,6 @@ class ExecutionResult():
         worker: dict
         op_id: str
         result: str
+
+class ControllerTermination(BaseModel):
+    type:str = "ControllerTermination"

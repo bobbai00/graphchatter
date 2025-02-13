@@ -20,7 +20,7 @@ class WorkerActor(pykka.ThreadingActor):
         self.socket = self.context.socket(zmq.REP)  # REP socket for replies
         self.socket.bind(f"tcp://{self.host}:{self.port}")  # Bind to host & port
 
-        self.execution_ready = False
+        self.running = False
 
         self.operators = {}
         self.execution_ready_ops = []
@@ -35,51 +35,34 @@ class WorkerActor(pykka.ThreadingActor):
         self.operator_worker_mapping = {}
 
     def on_start(self):
-        threading.Thread(target=self.listen_for_messages, daemon=True).start()
+         threading.Thread(target=self.listen_for_messages, daemon=True).start()
+         threading.Thread(target=self.execute_operators, daemon=True).start()
 
     def listen_for_messages(self):
         while True:
             message = self.socket.recv()
             deserialized_msg = pickle.loads(message)
-            self.socket.send_string(f"Worker {self.port} received message {deserialized_msg}")
-
             #TODO: also consider ports for input/output
 
             #Three types of messages
             #type1: task assignment message from the controller, deserialize the message and save needed information
             if isinstance(deserialized_msg, WorkerAssignment):
                 assignment = deserialized_msg
-                opID = assignment.operator.getID()
-                if assignment.worker['host'] == self.host and assignment.worker['port'] == self.port:
-                    self.operators[opID] = assignment.operator
-                    self.upstreams[opID] = assignment.upstreams
-                    self.downstreams[opID] = assignment.downstreams
-                operator_worker_mapping[opID] = assignment.worker
+                self.read_assignment(assignment)
+                self.socket.send_string(f"Worker {self.port} received task assignment.")
 
             #type3: results from the dependant actors, record it locally and see if all dependant messages arrive.
             elif isinstance(deserialized_msg, ExecutionResult):
                 input = deserialized_msg
-                self.inputs[input.opID].append(input.result)
-                print(f"Worker {self.port} received execution result for {opID}")
-                if(len(self.inputs[input.opID]) == len(self.upstreams[input.opID])):
-                    self.execution_ready_ops.append(input.opID)
-
+                self.read_result(input)
+                self.socket.send_string(f"Worker {self.port} received results.")
 
             #type2: execution start message from the controller, start to execute (if no dependant nodes, start to execute right away; if having 1+ dependant nodes, wait for their message all arrives and start to execute)
             elif isinstance(deserialized_msg, WorkerExecutionStart):
-                self.execution_ready = True
-                #Check if there is an execution ready operator
-                while self.execution_ready_ops:
-                    opID = execution_ready_ops.pop()
-                    #TODO actually execute operator
-                    print(f"Worker {self.port} started execution")
-                    for targetOpID in self.downstreams[opID]:
-                        target_worker = self.operator_worker_mapping[targetOpID]
-                        result = ExecutionResult(self, opID, "Dummy Result")
-                        message = pickle.dumps(result)
-                        self.send_to_worker(target_worker, message)
+                #self.execute_operators()
+                self.socket.send_string(f"Worker {self.port} starting execution.")
             else:
-                print(f"Worker {self.port} was not able to recognize message {deserialized_msg}")
+                self.socket.send_string(f"Worker {self.port} was not able to recognize message {deserialized_msg}")
 
     def send_to_worker(self, target, message):
         try:
@@ -91,10 +74,35 @@ class WorkerActor(pykka.ThreadingActor):
             print(f"Worker {self.port} received from Worker {target['port']}: {response}")
             socket.close()
         except Exception as e:
-            print(f"Error communicating with Worker {target['port']}: {e}")
-            response = f"Failed to reach Worker {target['port']}"
-
+            response = f"Worker {self.port} failed to reach Worker {target['port']}: {e}"
         return response
+
+    def read_assignment(self, assignment):
+        opID = assignment.operator.getID()
+        if assignment.worker['host'] == self.host and assignment.worker['port'] == self.port:
+            self.operators[opID] = assignment.operator
+            self.upstreams[opID] = assignment.upstreams
+            self.downstreams[opID] = assignment.downstreams
+        operator_worker_mapping[opID] = assignment.worker
+
+    def read_result(self, input):
+        self.inputs[input.opID].append(input.result)
+        if(len(self.inputs[input.opID]) == len(self.upstreams[input.opID])):
+            self.execution_ready_ops.append(input.opID)
+
+    def execute_operators(self):
+        #Check if there is an execution ready operator
+        while self.execution_ready_ops:
+            opID = execution_ready_ops.pop()
+            print(f"Worker {self.port} started execution")
+            for targetOpID in self.downstreams[opID]:
+                target_worker = self.operator_worker_mapping[targetOpID]
+                result = ExecutionResult(self, opID, "Dummy Result")
+                message = pickle.dumps(result)
+                response = self.send_to_worker(target_worker, message)
+                del self.operators[opID]
+        if not self.operators:
+            self.on_stop()
 
     def on_stop(self):
         self.socket.close()

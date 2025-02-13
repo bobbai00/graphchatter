@@ -3,6 +3,8 @@ import zmq
 import threading
 import pickle
 from messages import *
+import time
+from model.texera.TexeraWorkflow import TexeraWorkflow
 
 from engine.config import CONTROLLER_CONFIG, WORKERS_CONFIG
 
@@ -17,7 +19,7 @@ class Controller(pykka.ThreadingActor):
 
         # REP socket to receive messages (Controller as Server)
         self.server_socket = self.context.socket(zmq.REP)
-        self.server_socket.bind(f"tcp://{self.host}:{self.port}")
+        self.server_socket.connect(f"tcp://{self.host}:{self.port}")
 
     def on_start(self):
         threading.Thread(target=self.listen_for_requests, daemon=True).start()
@@ -25,19 +27,25 @@ class Controller(pykka.ThreadingActor):
     def listen_for_requests(self):
         while True:
             message = self.server_socket.recv()
-            workflow = pickle.loads(message)
+            deserialized_msg = pickle.loads(message)
+            if isinstance(deserialized_msg, TexeraWorkflow):
+                workflow = deserialized_msg
+                print(f"Controller received workflow with WID {workflow.wid}")
 
-            print(f"Controller received workflow with WID {workflow.wid}")
+                operators = workflow.GetOperators()
+                for assignment in self.assign_tasks_to_workers(operators, workflow):
+                    message = pickle.dumps(assignment)
+                    self.broadcast_to_workers(message)
 
-            operators = workflow.GetOperators()
-
-            for assignment in self.assign_tasks_to_workers(operators, workflow):
-                message = pickle.dumps(assignment)
-                self.broadcast_to_workers(message)
-
-            start = WorkerExecutionStart()
-            message = pickle.dumps(start)
-            self.server_socket.send_string(f"Execution starts")
+                start = WorkerExecutionStart()
+                message = pickle.dumps(start)
+                self.server_socket.send_string(f"Execution starts")
+            elif isinstance(deserialized_msg, ControllerTermination):
+                self.server_socket.send_string("Controller stopping")
+                self.on_stop()
+                break
+            else:
+                self.server_socket.send_string(f"Controller couldn't recognize message {deserialized_msg}")
 
     def broadcast_to_workers(self, message):
         responses = []
