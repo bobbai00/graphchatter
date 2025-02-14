@@ -9,6 +9,14 @@ class WorkerAssignment():
         self.worker = worker
         self.operator = operator
         self.workflow = workflow
+        self.upstreams = self.upstreams()
+        self.downstreams = self.downstreams()
+
+    def upstreams(self):
+        return self.workflow.DAG.predecessors(self.operator.GetId())
+
+    def downstreams(self):
+        return self.workflow.DAG.successors(self.operator.GetId())
 
 
 class ExecutionResult():

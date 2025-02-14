@@ -36,33 +36,37 @@ class WorkerActor(pykka.ThreadingActor):
 
     def on_start(self):
          threading.Thread(target=self.listen_for_messages, daemon=True).start()
-         threading.Thread(target=self.execute_operators, daemon=True).start()
 
     def listen_for_messages(self):
         while True:
-            message = self.socket.recv()
-            deserialized_msg = pickle.loads(message)
-            #TODO: also consider ports for input/output
+            try:
+                message = self.socket.recv()
+                deserialized_msg = pickle.loads(message)
 
-            #Three types of messages
-            #type1: task assignment message from the controller, deserialize the message and save needed information
-            if isinstance(deserialized_msg, WorkerAssignment):
-                assignment = deserialized_msg
-                self.read_assignment(assignment)
-                self.socket.send_string(f"Worker {self.port} received task assignment.")
+                self.socket.send_string(f"Worker {self.port} received task message {deserialized_msg}.")
 
-            #type3: results from the dependant actors, record it locally and see if all dependant messages arrive.
-            elif isinstance(deserialized_msg, ExecutionResult):
-                input = deserialized_msg
-                self.read_result(input)
-                self.socket.send_string(f"Worker {self.port} received results.")
+                #type1: task assignment message from the controller, deserialize the message and save needed information
+                if isinstance(deserialized_msg, WorkerAssignment):
+                    assignment = deserialized_msg
+                    self.read_assignment(assignment)
 
-            #type2: execution start message from the controller, start to execute (if no dependant nodes, start to execute right away; if having 1+ dependant nodes, wait for their message all arrives and start to execute)
-            elif isinstance(deserialized_msg, WorkerExecutionStart):
-                #self.execute_operators()
-                self.socket.send_string(f"Worker {self.port} starting execution.")
-            else:
-                self.socket.send_string(f"Worker {self.port} was not able to recognize message {deserialized_msg}")
+
+                #type2: results from the dependant actors, record it locally and see if all dependant messages arrive.
+                elif isinstance(deserialized_msg, ExecutionResult):
+                    input = deserialized_msg
+                    self.read_result(input)
+                    print(f"Worker {self.port} received results from worker {input.worker['port']}.")
+
+                #type3: execution start message from the controller, start to execute (if no dependant nodes, start to execute right away; if having 1+ dependant nodes, wait for their message all arrives and start to execute)
+                elif isinstance(deserialized_msg, WorkerExecutionStart):
+                    threading.Thread(target=self.execute_operators, daemon=True).start()
+                    print(f"Worker {self.port} starting execution.")
+                    break
+                else:
+                    print(f"Worker {self.port} was not able to recognize message {deserialized_msg}")
+            #No message received
+            except zmq.Again:
+                continue
 
     def send_to_worker(self, target, message):
         try:
@@ -78,12 +82,13 @@ class WorkerActor(pykka.ThreadingActor):
         return response
 
     def read_assignment(self, assignment):
-        opID = assignment.operator.getID()
+        opID = assignment.operator.GetId()
         if assignment.worker['host'] == self.host and assignment.worker['port'] == self.port:
+            print(f"Worker {self.port} received operator assignment for {assignment.operator.GetId()}.")
             self.operators[opID] = assignment.operator
             self.upstreams[opID] = assignment.upstreams
             self.downstreams[opID] = assignment.downstreams
-        operator_worker_mapping[opID] = assignment.worker
+        self.operator_worker_mapping[opID] = assignment.worker
 
     def read_result(self, input):
         self.inputs[input.opID].append(input.result)

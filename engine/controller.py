@@ -19,7 +19,7 @@ class Controller(pykka.ThreadingActor):
 
         # REP socket to receive messages (Controller as Server)
         self.server_socket = self.context.socket(zmq.REP)
-        self.server_socket.connect(f"tcp://{self.host}:{self.port}")
+        self.server_socket.bind(f"tcp://{self.host}:{self.port}")
 
     def on_start(self):
         threading.Thread(target=self.listen_for_requests, daemon=True).start()
@@ -32,15 +32,21 @@ class Controller(pykka.ThreadingActor):
                 workflow = deserialized_msg
                 print(f"Controller received workflow with WID {workflow.wid}")
 
+                #Assign operators to nodes
                 operators = workflow.GetOperators()
                 for assignment in self.assign_tasks_to_workers(operators, workflow):
                     message = pickle.dumps(assignment)
                     self.broadcast_to_workers(message)
 
+                #Workers should start execution
                 start = WorkerExecutionStart()
                 message = pickle.dumps(start)
+                self.broadcast_to_workers(message)
+
                 self.server_socket.send_string(f"Execution starts")
+
             elif isinstance(deserialized_msg, ControllerTermination):
+                #shut down controller
                 self.server_socket.send_string("Controller stopping")
                 self.on_stop()
                 break
