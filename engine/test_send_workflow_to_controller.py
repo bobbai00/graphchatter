@@ -162,10 +162,11 @@ workflow = TexeraWorkflow(json.loads(content), workflow_title = "test")
 response = send_message_to_controller(CONTROLLER_CONFIG["host"], CONTROLLER_CONFIG["port"], pickle.dumps(workflow))
 
 print(f"Response from Controller: {response}")
-termination = ControllerTermination()
+"""termination = ControllerTermination()
 response = send_message_to_controller(CONTROLLER_CONFIG["host"], CONTROLLER_CONFIG["port"], pickle.dumps(termination))
-print(f"Response from Controller: {response}")
+print(f"Response from Controller: {response}")"""
 
+time.sleep(1)
 
 # Clean up
 pykka.ActorRegistry.stop_all()

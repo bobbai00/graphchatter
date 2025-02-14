@@ -6,6 +6,7 @@ import pykka
 import zmq
 import threading
 import pickle
+import time
 from messages import WorkerExecutionStart, WorkerAssignment, ExecutionResult
 
 from engine.config import WORKERS_CONFIG
@@ -22,14 +23,14 @@ class WorkerActor(pykka.ThreadingActor):
 
         self.running = True
 
-        self.operators = {}
-        self.execution_ready_ops = []
+        self.operator_id = None
+        self.execution_ready = False
 
         #operator id is key so that we know when we can start to execute
         #upstream contain input operators for an operator that haven't sent their result yet
-        self.upstreams = {}
-        self.downstreams = {}
-        self.inputs = {}
+        self.upstreams = []
+        self.downstreams = []
+        self.inputs = []
 
         #operator id is key, worker is value, so that we know where to send to
         self.operator_worker_mapping = {}
@@ -48,17 +49,18 @@ class WorkerActor(pykka.ThreadingActor):
             if isinstance(deserialized_msg, WorkerAssignment):
                 assignment = deserialized_msg
                 self.read_assignment(assignment)
+
             #type2: results from the dependant actors, record it locally and see if all dependant messages arrive.
             elif isinstance(deserialized_msg, ExecutionResult):
                 input = deserialized_msg
                 self.read_result(input)
-                print(f"Worker {self.port} received results from worker {input.worker['port']}.")
+
             #type3: execution start message from the controller, start to execute (if no dependant nodes, start to execute right away; if having 1+ dependant nodes, wait for their message all arrives and start to execute)
             elif isinstance(deserialized_msg, WorkerExecutionStart):
                 threading.Thread(target=self.execute_operators, daemon=True).start()
-                print(f"Worker {self.port} starting execution.")
             else:
                 print(f"Worker {self.port} was not able to recognize message {deserialized_msg}")
+        time.sleep(1)
         self.on_stop()
 
     def send_to_worker(self, target, message):
@@ -68,39 +70,43 @@ class WorkerActor(pykka.ThreadingActor):
             socket.send(message)
 
             response = socket.recv_string()
-            print(f"Worker {self.port} received from Worker {target['port']}: {response}")
+            #print(f"Worker {self.port} received from Worker {target['port']}: {response}")
             socket.close()
         except Exception as e:
             response = f"Worker {self.port} failed to reach Worker {target['port']}: {e}"
         return response
 
     def read_assignment(self, assignment):
-        opID = assignment.operator.GetId()
+        opID = assignment.opID
         if assignment.worker['host'] == self.host and assignment.worker['port'] == self.port:
-            print(f"Worker {self.port} received operator assignment for {assignment.operator.GetId()}.")
-            self.operators[opID] = assignment.operator
-            self.upstreams[opID] = assignment.upstreams
-            self.downstreams[opID] = assignment.downstreams
+            print(f"Worker {self.port} received operator assignment for {opID}.")
+            self.operator_id = opID
+            self.upstreams = assignment.upstreams
+            if self.upstreams == []:
+                self.execution_ready = True
+            self.downstreams = assignment.downstreams
         self.operator_worker_mapping[opID] = assignment.worker
 
     def read_result(self, input):
-        self.inputs[input.opID].append(input.result)
-        if(len(self.inputs[input.opID]) == len(self.upstreams[input.opID])):
-            self.execution_ready_ops.append(input.opID)
+        print(f"Worker {self.port} received results from worker {input.port}.")
+        self.inputs.append(input.result)
+        if(len(self.inputs) == len(self.upstreams)):
+            self.execution_ready = True
 
     def execute_operators(self):
-        #Check if there is an execution ready operator
-        while self.upstreams and self.downstreams:
-            if self.execution_ready_ops:
-                opID = execution_ready_ops.pop()
+        #Check if operator is execution ready
+        while True:
+            if self.execution_ready:
                 print(f"Worker {self.port} started execution")
-                for targetOpID in self.downstreams[opID]:
+                result = ExecutionResult(self.host, self.port, self.operator_id, "Dummy Result")
+                print(f"Worker {self.port} finished execution")
+                for targetOpID in self.downstreams:
                     target_worker = self.operator_worker_mapping[targetOpID]
-                    result = ExecutionResult(self, opID, "Dummy Result")
                     message = pickle.dumps(result)
                     response = self.send_to_worker(target_worker, message)
-                del self.upstreams[opID]
-                del self.downstrams[opID]
+                break
+            else:
+                time.sleep(0.1)
         self.running = False
 
     def on_stop(self):
