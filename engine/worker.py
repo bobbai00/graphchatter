@@ -20,7 +20,7 @@ class WorkerActor(pykka.ThreadingActor):
         self.socket = self.context.socket(zmq.REP)  # REP socket for replies
         self.socket.bind(f"tcp://{self.host}:{self.port}")  # Bind to host & port
 
-        self.running = False
+        self.running = True
 
         self.operators = {}
         self.execution_ready_ops = []
@@ -38,33 +38,28 @@ class WorkerActor(pykka.ThreadingActor):
          threading.Thread(target=self.listen_for_messages, daemon=True).start()
 
     def listen_for_messages(self):
-        while True:
-            try:
-                message = self.socket.recv()
-                deserialized_msg = pickle.loads(message)
+        while self.running:
+            message = self.socket.recv()
+            deserialized_msg = pickle.loads(message)
 
-                self.socket.send_string(f"Worker {self.port} received message {deserialized_msg}.")
+            self.socket.send_string(f"Worker {self.port} received message {deserialized_msg}.")
 
-                #type1: task assignment message from the controller, deserialize the message and save needed information
-                if isinstance(deserialized_msg, WorkerAssignment):
-                    assignment = deserialized_msg
-                    self.read_assignment(assignment)
-
-                #type2: results from the dependant actors, record it locally and see if all dependant messages arrive.
-                elif isinstance(deserialized_msg, ExecutionResult):
-                    input = deserialized_msg
-                    self.read_result(input)
-                    print(f"Worker {self.port} received results from worker {input.worker['port']}.")
-
-                #type3: execution start message from the controller, start to execute (if no dependant nodes, start to execute right away; if having 1+ dependant nodes, wait for their message all arrives and start to execute)
-                elif isinstance(deserialized_msg, WorkerExecutionStart):
-                    threading.Thread(target=self.execute_operators, daemon=True).start()
-                    print(f"Worker {self.port} starting execution.")
-                    break
-                else:
-                    print(f"Worker {self.port} was not able to recognize message {deserialized_msg}")
-            except zmq.Again:
-                continue
+            #type1: task assignment message from the controller, deserialize the message and save needed information
+            if isinstance(deserialized_msg, WorkerAssignment):
+                assignment = deserialized_msg
+                self.read_assignment(assignment)
+            #type2: results from the dependant actors, record it locally and see if all dependant messages arrive.
+            elif isinstance(deserialized_msg, ExecutionResult):
+                input = deserialized_msg
+                self.read_result(input)
+                print(f"Worker {self.port} received results from worker {input.worker['port']}.")
+            #type3: execution start message from the controller, start to execute (if no dependant nodes, start to execute right away; if having 1+ dependant nodes, wait for their message all arrives and start to execute)
+            elif isinstance(deserialized_msg, WorkerExecutionStart):
+                threading.Thread(target=self.execute_operators, daemon=True).start()
+                print(f"Worker {self.port} starting execution.")
+            else:
+                print(f"Worker {self.port} was not able to recognize message {deserialized_msg}")
+        self.on_stop()
 
     def send_to_worker(self, target, message):
         try:
@@ -104,9 +99,9 @@ class WorkerActor(pykka.ThreadingActor):
                     result = ExecutionResult(self, opID, "Dummy Result")
                     message = pickle.dumps(result)
                     response = self.send_to_worker(target_worker, message)
-                    del self.upstreams[opID]
-                    del self.downstrams[opID]
-        self.on_stop()
+                del self.upstreams[opID]
+                del self.downstrams[opID]
+        self.running = False
 
     def on_stop(self):
         self.socket.close()
