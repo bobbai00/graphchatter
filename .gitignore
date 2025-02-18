@@ -1,0 +1,80 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+.env/
+.venv/
+pip-wheel-metadata/
+*.env
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+eggs/
+*.egg-info/
+.installed.cfg
+
+# Logs and databases
+*.log
+*.sqlite3
+*.db
+*.pyo
+
+# Cache files
+.cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+*.pytest_cache/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# PyInstaller
+*.spec
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE/editor specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# Docker / Deployment
+.dockerignore
+*.dockerfile
+*.tar
+
+# Security
+.envrc
+secrets.json
+config.yaml
+
+# Poetry
+poetry.lock
+
+# pipenv
+Pipfile
+Pipfile.lock
+
+# PyCharm
+*.iml
+/.idea
+/.vscode
+
+# macOS
+.DS_Store
